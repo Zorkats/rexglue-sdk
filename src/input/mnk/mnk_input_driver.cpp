@@ -312,7 +312,7 @@ void MnkInputDriver::EmitKeystrokes(uint16_t buttons, uint8_t lt, uint8_t rt,
   // cleanly. Right stick is mouse-driven and continuous, so it intentionally
   // emits no keystrokes (would flood the queue). Diagonals win when both axes
   // are deflected.
-  auto stickDir = [](int16_t x, int16_t y) -> VirtualKey {
+  auto stick_dir = [](int16_t x, int16_t y) -> VirtualKey {
     if (x > 0 && y > 0) return VirtualKey::kXInputPadLThumbUpRight;
     if (x < 0 && y > 0) return VirtualKey::kXInputPadLThumbUpLeft;
     if (x > 0 && y < 0) return VirtualKey::kXInputPadLThumbDownRight;
@@ -323,8 +323,8 @@ void MnkInputDriver::EmitKeystrokes(uint16_t buttons, uint8_t lt, uint8_t rt,
     if (x < 0) return VirtualKey::kXInputPadLThumbLeft;
     return VirtualKey::kNone;
   };
-  VirtualKey new_dir = stickDir(lx, ly);
-  VirtualKey old_dir = stickDir(prev_thumb_lx_, prev_thumb_ly_);
+  VirtualKey new_dir = stick_dir(lx, ly);
+  VirtualKey old_dir = stick_dir(prev_thumb_lx_, prev_thumb_ly_);
   if (new_dir != old_dir) {
     if (old_dir != VirtualKey::kNone)
       EnqueueKeystroke(static_cast<uint16_t>(old_dir), false);
