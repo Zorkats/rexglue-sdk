@@ -211,6 +211,11 @@ X_RESULT MnkInputDriver::GetState(uint32_t user_index, X_INPUT_STATE* out_state)
 
   packet_number_++;
 
+  // Emit edge-triggered keystrokes for XamInputGetKeystroke. Without this,
+  // games that use keystrokes for "Press Start" prompts and menu navigation
+  // never see input from MnK because the queue stays empty.
+  EmitKeystrokes(buttons, lt, rt, clamp16(lx), clamp16(ly));
+
   if (out_state) {
     out_state->packet_number = packet_number_;
     out_state->gamepad.buttons = buttons;
@@ -255,6 +260,79 @@ void MnkInputDriver::EnqueueKeystroke(uint16_t vk_pad, bool down) {
   ks.user_index = static_cast<uint8_t>(UserIndex());
   ks.hid_code = 0;
   keystroke_queue_.push(ks);
+}
+
+void MnkInputDriver::EmitKeystrokes(uint16_t buttons, uint8_t lt, uint8_t rt,
+                                    int16_t lx, int16_t ly) {
+  // Buttons: emit on each rising/falling edge. Guide has no VK_PAD code in the
+  // standard XInput keystroke spec, so it is intentionally omitted.
+  struct ButtonMap {
+    uint16_t mask;
+    VirtualKey vk_pad;
+  };
+  static constexpr ButtonMap kButtonMap[] = {
+      {X_INPUT_GAMEPAD_DPAD_UP, VirtualKey::kXInputPadDpadUp},
+      {X_INPUT_GAMEPAD_DPAD_DOWN, VirtualKey::kXInputPadDpadDown},
+      {X_INPUT_GAMEPAD_DPAD_LEFT, VirtualKey::kXInputPadDpadLeft},
+      {X_INPUT_GAMEPAD_DPAD_RIGHT, VirtualKey::kXInputPadDpadRight},
+      {X_INPUT_GAMEPAD_START, VirtualKey::kXInputPadStart},
+      {X_INPUT_GAMEPAD_BACK, VirtualKey::kXInputPadBack},
+      {X_INPUT_GAMEPAD_LEFT_THUMB, VirtualKey::kXInputPadLThumbPress},
+      {X_INPUT_GAMEPAD_RIGHT_THUMB, VirtualKey::kXInputPadRThumbPress},
+      {X_INPUT_GAMEPAD_LEFT_SHOULDER, VirtualKey::kXInputPadLShoulder},
+      {X_INPUT_GAMEPAD_RIGHT_SHOULDER, VirtualKey::kXInputPadRShoulder},
+      {X_INPUT_GAMEPAD_A, VirtualKey::kXInputPadA},
+      {X_INPUT_GAMEPAD_B, VirtualKey::kXInputPadB},
+      {X_INPUT_GAMEPAD_X, VirtualKey::kXInputPadX},
+      {X_INPUT_GAMEPAD_Y, VirtualKey::kXInputPadY},
+  };
+  uint16_t pressed = static_cast<uint16_t>(buttons & ~prev_buttons_);
+  uint16_t released = static_cast<uint16_t>(prev_buttons_ & ~buttons);
+  for (const auto& m : kButtonMap) {
+    if (pressed & m.mask)
+      EnqueueKeystroke(static_cast<uint16_t>(m.vk_pad), true);
+    if (released & m.mask)
+      EnqueueKeystroke(static_cast<uint16_t>(m.vk_pad), false);
+  }
+  prev_buttons_ = buttons;
+
+  // Triggers: emit on any-deflection edge. MnK is digital, so 0 vs nonzero is
+  // sufficient — no analog deadzone needed.
+  bool lt_now = lt > 0, lt_was = prev_left_trigger_ > 0;
+  bool rt_now = rt > 0, rt_was = prev_right_trigger_ > 0;
+  if (lt_now != lt_was)
+    EnqueueKeystroke(static_cast<uint16_t>(VirtualKey::kXInputPadLTrigger), lt_now);
+  if (rt_now != rt_was)
+    EnqueueKeystroke(static_cast<uint16_t>(VirtualKey::kXInputPadRTrigger), rt_now);
+  prev_left_trigger_ = lt;
+  prev_right_trigger_ = rt;
+
+  // Left stick: classify into one of 9 states (kNone or one of 8 directions).
+  // Keyboard binding gives discrete values (0 or +/-INT16_MAX) so this maps
+  // cleanly. Right stick is mouse-driven and continuous, so it intentionally
+  // emits no keystrokes (would flood the queue). Diagonals win when both axes
+  // are deflected.
+  auto stickDir = [](int16_t x, int16_t y) -> VirtualKey {
+    if (x > 0 && y > 0) return VirtualKey::kXInputPadLThumbUpRight;
+    if (x < 0 && y > 0) return VirtualKey::kXInputPadLThumbUpLeft;
+    if (x > 0 && y < 0) return VirtualKey::kXInputPadLThumbDownRight;
+    if (x < 0 && y < 0) return VirtualKey::kXInputPadLThumbDownLeft;
+    if (y > 0) return VirtualKey::kXInputPadLThumbUp;
+    if (y < 0) return VirtualKey::kXInputPadLThumbDown;
+    if (x > 0) return VirtualKey::kXInputPadLThumbRight;
+    if (x < 0) return VirtualKey::kXInputPadLThumbLeft;
+    return VirtualKey::kNone;
+  };
+  VirtualKey new_dir = stickDir(lx, ly);
+  VirtualKey old_dir = stickDir(prev_thumb_lx_, prev_thumb_ly_);
+  if (new_dir != old_dir) {
+    if (old_dir != VirtualKey::kNone)
+      EnqueueKeystroke(static_cast<uint16_t>(old_dir), false);
+    if (new_dir != VirtualKey::kNone)
+      EnqueueKeystroke(static_cast<uint16_t>(new_dir), true);
+  }
+  prev_thumb_lx_ = lx;
+  prev_thumb_ly_ = ly;
 }
 
 void MnkInputDriver::CenterCursor() {
@@ -377,6 +455,12 @@ void MnkInputDriver::OnLostFocus(rex::ui::UISetupEvent&) {
   std::memset(key_down_, 0, sizeof(key_down_));
   mouse_dx_ = 0;
   mouse_dy_ = 0;
+  // Reset edge-detection state so resumed focus does not fire stale keystrokes
+  prev_buttons_ = 0;
+  prev_left_trigger_ = 0;
+  prev_right_trigger_ = 0;
+  prev_thumb_lx_ = 0;
+  prev_thumb_ly_ = 0;
   if (mouse_captured_ && attached_window_) {
     mouse_captured_ = false;
     attached_window_->SetCursorVisibility(rex::ui::Window::CursorVisibility::kVisible);

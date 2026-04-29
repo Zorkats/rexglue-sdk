@@ -57,6 +57,7 @@ class MnkInputDriver final : public InputDriver,
   void UpdateMouseCapture();
   void SetKeyState(uint16_t vk, bool down);
   void EnqueueKeystroke(uint16_t vk_pad, bool down);
+  void EmitKeystrokes(uint16_t buttons, uint8_t lt, uint8_t rt, int16_t lx, int16_t ly);
 
   rex::ui::Window* attached_window_ = nullptr;
 
@@ -73,6 +74,13 @@ class MnkInputDriver final : public InputDriver,
 
   // Keystroke queue
   std::queue<X_INPUT_KEYSTROKE> keystroke_queue_;
+
+  // Previous-frame state for keystroke edge detection
+  uint16_t prev_buttons_ = 0;
+  uint8_t prev_left_trigger_ = 0;
+  uint8_t prev_right_trigger_ = 0;
+  int16_t prev_thumb_lx_ = 0;
+  int16_t prev_thumb_ly_ = 0;
 
   // Packet number incremented on state change
   uint32_t packet_number_ = 0;
