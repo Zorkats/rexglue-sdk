@@ -262,8 +262,8 @@ void MnkInputDriver::EnqueueKeystroke(uint16_t vk_pad, bool down) {
   keystroke_queue_.push(ks);
 }
 
-void MnkInputDriver::EmitKeystrokes(uint16_t buttons, uint8_t lt, uint8_t rt,
-                                    int16_t lx, int16_t ly) {
+void MnkInputDriver::EmitKeystrokes(uint16_t buttons, uint8_t lt, uint8_t rt, int16_t lx,
+                                    int16_t ly) {
   // Buttons: emit on each rising/falling edge. Guide has no VK_PAD code in the
   // standard XInput keystroke spec, so it is intentionally omitted.
   struct ButtonMap {
@@ -313,14 +313,22 @@ void MnkInputDriver::EmitKeystrokes(uint16_t buttons, uint8_t lt, uint8_t rt,
   // emits no keystrokes (would flood the queue). Diagonals win when both axes
   // are deflected.
   auto stick_dir = [](int16_t x, int16_t y) -> VirtualKey {
-    if (x > 0 && y > 0) return VirtualKey::kXInputPadLThumbUpRight;
-    if (x < 0 && y > 0) return VirtualKey::kXInputPadLThumbUpLeft;
-    if (x > 0 && y < 0) return VirtualKey::kXInputPadLThumbDownRight;
-    if (x < 0 && y < 0) return VirtualKey::kXInputPadLThumbDownLeft;
-    if (y > 0) return VirtualKey::kXInputPadLThumbUp;
-    if (y < 0) return VirtualKey::kXInputPadLThumbDown;
-    if (x > 0) return VirtualKey::kXInputPadLThumbRight;
-    if (x < 0) return VirtualKey::kXInputPadLThumbLeft;
+    if (x > 0 && y > 0)
+      return VirtualKey::kXInputPadLThumbUpRight;
+    if (x < 0 && y > 0)
+      return VirtualKey::kXInputPadLThumbUpLeft;
+    if (x > 0 && y < 0)
+      return VirtualKey::kXInputPadLThumbDownRight;
+    if (x < 0 && y < 0)
+      return VirtualKey::kXInputPadLThumbDownLeft;
+    if (y > 0)
+      return VirtualKey::kXInputPadLThumbUp;
+    if (y < 0)
+      return VirtualKey::kXInputPadLThumbDown;
+    if (x > 0)
+      return VirtualKey::kXInputPadLThumbRight;
+    if (x < 0)
+      return VirtualKey::kXInputPadLThumbLeft;
     return VirtualKey::kNone;
   };
   VirtualKey new_dir = stick_dir(lx, ly);
