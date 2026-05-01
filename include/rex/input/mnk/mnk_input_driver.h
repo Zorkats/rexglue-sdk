@@ -11,8 +11,10 @@
 #pragma once
 
 #include <rex/input/input_driver.h>
+#include <rex/ui/virtual_key.h>
 #include <rex/ui/window_listener.h>
 
+#include <chrono>
 #include <cstdint>
 #include <mutex>
 #include <queue>
@@ -50,14 +52,42 @@ class MnkInputDriver final : public InputDriver,
   void OnLostFocus(rex::ui::UISetupEvent& e) override;
   void OnGotFocus(rex::ui::UISetupEvent& e) override;
 
+  // Per-pad-button slot index for keystroke edge tracking and repeat timing.
+  enum PadIdx {
+    kPadIdxA = 0,
+    kPadIdxB,
+    kPadIdxX,
+    kPadIdxY,
+    kPadIdxLB,
+    kPadIdxRB,
+    kPadIdxStart,
+    kPadIdxBack,
+    kPadIdxL3,
+    kPadIdxR3,
+    kPadIdxDU,
+    kPadIdxDD,
+    kPadIdxDL,
+    kPadIdxDR,
+    kPadIdxLT,
+    kPadIdxRT,
+    kPadIdxLStick,
+    kPadIdxRStick,
+    kPadIdxCount
+  };
+
  private:
   uint32_t UserIndex() const;
   bool IsEnabled() const;
   void CenterCursor();
   void UpdateMouseCapture();
   void SetKeyState(uint16_t vk, bool down);
-  void EnqueueKeystroke(uint16_t vk_pad, bool down);
-  void EmitKeystrokes(uint16_t buttons, uint8_t lt, uint8_t rt, int16_t lx, int16_t ly);
+  void EnqueueKeystroke(uint16_t vk_pad, uint16_t flags);
+  void HandleEdge(PadIdx idx, uint16_t vk_pad, bool down);
+  void HandleStickDirChange(PadIdx idx, uint16_t new_dir);
+  void EmitButtonChange(rex::ui::VirtualKey key_vk, bool down);
+  void RecomputeLstickDir();
+  void EnqueueRStickIfChanged(int16_t rx, int16_t ry);
+  void TickRepeats();
 
   rex::ui::Window* attached_window_ = nullptr;
 
@@ -75,12 +105,15 @@ class MnkInputDriver final : public InputDriver,
   // Keystroke queue
   std::queue<X_INPUT_KEYSTROKE> keystroke_queue_;
 
-  // Previous-frame state for keystroke edge detection
-  uint16_t prev_buttons_ = 0;
-  uint8_t prev_left_trigger_ = 0;
-  uint8_t prev_right_trigger_ = 0;
-  int16_t prev_thumb_lx_ = 0;
-  int16_t prev_thumb_ly_ = 0;
+  // Per-pad-button state for KEYDOWN/KEYUP edge tracking and KEYSTROKE_REPEAT
+  // timing. Stick slots store the currently-held direction as vk_pad.
+  struct PadKeyState {
+    bool held = false;
+    uint16_t vk_pad = 0;  // VirtualKey value, 0 = kNone
+    std::chrono::steady_clock::time_point pressed_at;
+    std::chrono::steady_clock::time_point last_event_at;
+  };
+  PadKeyState pad_states_[kPadIdxCount];
 
   // Packet number incremented on state change
   uint32_t packet_number_ = 0;
